@@ -6,6 +6,7 @@ A local-first, privacy-focused Flutter mobile application designed for storing a
 
 ## ✨ Features
 
+- **Biometric Security & Startup Lock:** Optional biometric lock (Fingerprint / Face ID) with a pulsating sensor graphic screen. Prompts on first startup with easy opt-in or direct normal open, and full control to toggle ON/OFF or lock anytime from the AppBar.
 - **Local-First & Offline Storage:** Credentials are saved locally on your device without third-party cloud accounts, tracking, or telemetry.
 - **ChatGPT-Inspired Dark Theme:** Refined dark-gray Material 3 palette (`#212121` background, `#2B2B2B` surfaces, `#303030` dialogs, and `#3A3A3A` subtle borders).
 - **Password Obfuscation & Toggle:** Passwords are kept masked (`••••••••••••`) by default with an eye toggle to temporarily reveal them.
@@ -22,7 +23,8 @@ A local-first, privacy-focused Flutter mobile application designed for storing a
 ## 📱 Screenshots & Design
 
 The app includes a custom pixel-art **Chest** application launcher icon and a clean single-screen vault interface:
-- **Home Screen:** Scrollable list of active credentials with search, add, selection mode, and Bin navigation.
+- **Lock Screen:** Pulsating biometric fingerprint sensor graphic with automatic sensor detection and device credential fallback.
+- **Home Screen:** Scrollable list of active credentials with search, add, selection mode, biometric controls, and Bin navigation.
 - **Add / Edit Modal Dialog:** Centered form with full validation and obscured password input.
 - **Bin / Recycle Screen:** Dedicated interface for managing soft-deleted credentials with restore & permanent delete options.
 
@@ -34,12 +36,13 @@ Built following clean layered architecture (Service-Repository pattern):
 
 ```text
 lib/
-├── main.dart                      # App entry point, MaterialApp setup, and theme injection
+├── main.dart                      # App entry point, startup lock coordinator, and theme injection
 ├── models/
 │   └── password_item.dart         # Credential entity, JSON serialization, copyWith, & safe toString
 ├── services/
 │   ├── storage_service.dart       # Abstract interface decoupling UI from storage
-│   └── local_storage_service.dart # SharedPreferences local persistence implementation
+│   ├── local_storage_service.dart # SharedPreferences local persistence implementation
+│   └── biometric_service.dart     # Device biometric detection, local_auth, and preferences
 ├── theme/
 │   └── app_theme.dart             # Material 3 dark-gray design tokens & widget themes
 ├── widgets/
@@ -47,7 +50,8 @@ lib/
 │   ├── credential_card.dart       # Card with password reveal, copy, long-press options, & multi-select
 │   └── empty_state.dart           # Polished zero-data illustration & action button
 └── pages/
-    ├── home_page.dart             # Main screen, swipe-to-bin, multi-select toolbar, and coordination
+    ├── home_page.dart             # Main screen, swipe-to-bin, multi-select toolbar, and biometrics toggle
+    ├── lock_screen.dart           # Dedicated biometric lock screen with animated sensor
     └── bin_page.dart              # Deleted items screen with restore and permanent delete
 ```
 

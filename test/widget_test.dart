@@ -1,24 +1,32 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:password_vault/main.dart';
 import 'package:password_vault/models/password_item.dart';
+import 'package:password_vault/pages/lock_screen.dart';
+import 'package:password_vault/services/biometric_service.dart';
 import 'package:password_vault/services/local_storage_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   group('Chest Full Widget & UI Tests', () {
     setUp(() {
-      SharedPreferences.setMockInitialValues({});
+      SharedPreferences.setMockInitialValues({
+        'chest_biometrics_prompted_v1': true,
+      });
     });
 
     testWidgets(
       'Renders Chest title, logo, and empty state when vault is empty',
       (tester) async {
         final storageService = LocalStorageService();
+        final biometricService = BiometricService();
         await tester.pumpWidget(
-          PasswordVaultApp(storageService: storageService),
+          PasswordVaultApp(
+            storageService: storageService,
+            biometricService: biometricService,
+          ),
         );
         await tester.pumpAndSettle();
 
@@ -32,8 +40,12 @@ void main() {
       'Opens dialog, validates required fields, and rejects empty form',
       (tester) async {
         final storageService = LocalStorageService();
+        final biometricService = BiometricService();
         await tester.pumpWidget(
-          PasswordVaultApp(storageService: storageService),
+          PasswordVaultApp(
+            storageService: storageService,
+            biometricService: biometricService,
+          ),
         );
         await tester.pumpAndSettle();
 
@@ -60,8 +72,12 @@ void main() {
       'Adds a new credential, shows in list, and can reveal password',
       (tester) async {
         final storageService = LocalStorageService();
+        final biometricService = BiometricService();
         await tester.pumpWidget(
-          PasswordVaultApp(storageService: storageService),
+          PasswordVaultApp(
+            storageService: storageService,
+            biometricService: biometricService,
+          ),
         );
         await tester.pumpAndSettle();
 
@@ -104,6 +120,7 @@ void main() {
       tester,
     ) async {
       final storageService = LocalStorageService();
+      final biometricService = BiometricService();
       await storageService.saveCredential(
         PasswordItem(
           id: 'item-edit-1',
@@ -113,7 +130,12 @@ void main() {
         ),
       );
 
-      await tester.pumpWidget(PasswordVaultApp(storageService: storageService));
+      await tester.pumpWidget(
+        PasswordVaultApp(
+          storageService: storageService,
+          biometricService: biometricService,
+        ),
+      );
       await tester.pumpAndSettle();
 
       expect(find.text('Twitter'), findsOneWidget);
@@ -148,6 +170,7 @@ void main() {
       'Moves item to Bin, views in BinPage, and restores back to Chest',
       (tester) async {
         final storageService = LocalStorageService();
+        final biometricService = BiometricService();
         await storageService.saveCredential(
           PasswordItem(
             id: 'item-bin-1',
@@ -158,7 +181,10 @@ void main() {
         );
 
         await tester.pumpWidget(
-          PasswordVaultApp(storageService: storageService),
+          PasswordVaultApp(
+            storageService: storageService,
+            biometricService: biometricService,
+          ),
         );
         await tester.pumpAndSettle();
 
@@ -201,6 +227,7 @@ void main() {
 
     testWidgets('Multi-select items and move batch to Bin', (tester) async {
       final storageService = LocalStorageService();
+      final biometricService = BiometricService();
       await storageService.saveCredential(
         PasswordItem(
           id: 'item-1',
@@ -218,7 +245,12 @@ void main() {
         ),
       );
 
-      await tester.pumpWidget(PasswordVaultApp(storageService: storageService));
+      await tester.pumpWidget(
+        PasswordVaultApp(
+          storageService: storageService,
+          biometricService: biometricService,
+        ),
+      );
       await tester.pumpAndSettle();
 
       expect(find.text('Item One'), findsOneWidget);
@@ -247,6 +279,62 @@ void main() {
 
       // Both items are moved to bin, empty state shows
       expect(find.text('No credentials yet'), findsOneWidget);
+    });
+
+    testWidgets(
+      'Prompts biometric setup on first launch and allows normal open',
+      (tester) async {
+        SharedPreferences.setMockInitialValues({
+          'chest_biometrics_prompted_v1': false,
+          'chest_biometrics_enabled_v1': false,
+        });
+
+        final storageService = LocalStorageService();
+        final biometricService = BiometricService();
+
+        await tester.pumpWidget(
+          PasswordVaultApp(
+            storageService: storageService,
+            biometricService: biometricService,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Verify the startup popup dialog appears
+        expect(find.text('Add Biometrics?'), findsOneWidget);
+        expect(find.text('Cancel / Normal Open'), findsOneWidget);
+        expect(find.text('Add Biometrics'), findsOneWidget);
+
+        // Tap Cancel / Normal Open
+        await tester.tap(find.text('Cancel / Normal Open'));
+        await tester.pumpAndSettle();
+
+        // Dialog is dismissed and Chest opens directly
+        expect(find.text('Add Biometrics?'), findsNothing);
+        expect(find.text('Chest'), findsOneWidget);
+      },
+    );
+
+    testWidgets('LockScreen renders fingerprint sensor graphic correctly', (
+      tester,
+    ) async {
+      final biometricService = BiometricService();
+      bool unlocked = false;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: LockScreen(
+            biometricService: biometricService,
+            onUnlocked: () => unlocked = true,
+          ),
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(find.text('Chest Locked'), findsOneWidget);
+      expect(find.byIcon(Icons.fingerprint_rounded), findsWidgets);
+      expect(find.text('Unlock with Biometrics'), findsOneWidget);
+      expect(unlocked, isFalse);
     });
   });
 }

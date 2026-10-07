@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/password_item.dart';
+import '../services/biometric_service.dart';
 import '../services/storage_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/add_credential_dialog.dart';
@@ -11,8 +12,15 @@ import 'bin_page.dart';
 /// The primary screen of Chest (Password Vault).
 class HomePage extends StatefulWidget {
   final StorageService storageService;
+  final BiometricService biometricService;
+  final VoidCallback? onLock;
 
-  const HomePage({super.key, required this.storageService});
+  const HomePage({
+    super.key,
+    required this.storageService,
+    required this.biometricService,
+    this.onLock,
+  });
 
   @override
   State<HomePage> createState() => _HomePageState();
@@ -31,6 +39,255 @@ class _HomePageState extends State<HomePage> {
   void initState() {
     super.initState();
     _loadCredentials();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkStartupBiometricPrompt();
+    });
+  }
+
+  Future<void> _checkStartupBiometricPrompt() async {
+    final enabled = await widget.biometricService.isBiometricsEnabled();
+    final prompted = await widget.biometricService.hasPromptedSetup();
+    if (!enabled && !prompted && mounted) {
+      await widget.biometricService.setPromptedSetup(true);
+      _showBiometricSetupDialog();
+    }
+  }
+
+  Future<void> _showBiometricSetupDialog() async {
+    final shouldEnable = await showDialog<bool>(
+      context: context,
+      barrierDismissible: true,
+      builder: (dialogContext) {
+        return AlertDialog(
+          backgroundColor: AppTheme.elevatedSurface,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+            side: const BorderSide(color: AppTheme.border, width: 1),
+          ),
+          title: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppTheme.surface,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: AppTheme.border, width: 1),
+                ),
+                child: const Icon(
+                  Icons.fingerprint_rounded,
+                  color: AppTheme.accent,
+                  size: 22,
+                ),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Text(
+                  'Add Biometrics?',
+                  style: TextStyle(
+                    color: AppTheme.primaryText,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          content: const Text(
+            'Would you like to protect Chest with your fingerprint or face recognition whenever the app opens?',
+            style: TextStyle(
+              color: AppTheme.secondaryText,
+              fontSize: 14,
+              height: 1.4,
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Cancel / Normal Open'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('Add Biometrics'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (shouldEnable == true && mounted) {
+      _enableBiometricsWithVerification();
+    }
+  }
+
+  Future<void> _enableBiometricsWithVerification() async {
+    final available = await widget.biometricService.isBiometricsAvailable();
+    if (!available && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Biometric hardware is not available on this device.'),
+        ),
+      );
+      return;
+    }
+
+    final success = await widget.biometricService.authenticate(
+      reason: 'Confirm your fingerprint to activate biometric security',
+    );
+
+    if (success && mounted) {
+      await widget.biometricService.setBiometricsEnabled(true);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Biometric security enabled for Chest!'),
+          backgroundColor: AppTheme.elevatedSurface,
+        ),
+      );
+    } else if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Biometric verification cancelled or failed.'),
+        ),
+      );
+    }
+  }
+
+  Future<void> _showBiometricSettingsDialog() async {
+    final isEnabled = await widget.biometricService.isBiometricsEnabled();
+    if (!mounted) return;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: AppTheme.elevatedSurface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        side: BorderSide(color: AppTheme.border, width: 1),
+      ),
+      builder: (sheetContext) {
+        bool currentEnabled = isEnabled;
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            return SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  vertical: 20,
+                  horizontal: 20,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 36,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: AppTheme.border,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: AppTheme.surface,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: AppTheme.border,
+                              width: 1,
+                            ),
+                          ),
+                          child: const Icon(
+                            Icons.security_rounded,
+                            color: AppTheme.accent,
+                            size: 20,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        const Expanded(
+                          child: Text(
+                            'Vault Security',
+                            style: TextStyle(
+                              color: AppTheme.primaryText,
+                              fontSize: 18,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    const Divider(),
+                    SwitchListTile(
+                      activeThumbColor: AppTheme.accent,
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text(
+                        'Biometric Lock on Startup',
+                        style: TextStyle(color: AppTheme.primaryText),
+                      ),
+                      subtitle: Text(
+                        currentEnabled
+                            ? 'Fingerprint required when Chest opens'
+                            : 'Chest opens directly without prompt',
+                        style: const TextStyle(
+                          color: AppTheme.secondaryText,
+                          fontSize: 12,
+                        ),
+                      ),
+                      value: currentEnabled,
+                      onChanged: (val) async {
+                        if (val) {
+                          final success = await widget.biometricService
+                              .authenticate(
+                                reason: 'Confirm fingerprint to enable biometric lock',
+                              );
+                          if (success) {
+                            await widget.biometricService.setBiometricsEnabled(
+                              true,
+                            );
+                            setSheetState(() => currentEnabled = true);
+                          }
+                        } else {
+                          await widget.biometricService.setBiometricsEnabled(
+                            false,
+                          );
+                          setSheetState(() => currentEnabled = false);
+                        }
+                      },
+                    ),
+                    if (currentEnabled && widget.onLock != null) ...[
+                      const SizedBox(height: 12),
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: const Icon(
+                          Icons.lock_outline_rounded,
+                          color: AppTheme.accent,
+                        ),
+                        title: const Text(
+                          'Lock Chest Now',
+                          style: TextStyle(color: AppTheme.primaryText),
+                        ),
+                        subtitle: const Text(
+                          'Immediately lock with fingerprint screen',
+                          style: TextStyle(
+                            color: AppTheme.secondaryText,
+                            fontSize: 12,
+                          ),
+                        ),
+                        onTap: () {
+                          Navigator.of(sheetContext).pop();
+                          widget.onLock?.call();
+                        },
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 
   Future<void> _loadCredentials() async {
@@ -280,7 +537,6 @@ class _HomePageState extends State<HomePage> {
         builder: (context) => BinPage(storageService: widget.storageService),
       ),
     );
-    // Refresh count and active credentials after returning from Bin
     _loadCredentials();
   }
 
@@ -382,6 +638,16 @@ class _HomePageState extends State<HomePage> {
     return AppBar(
       title: const Text('Chest'),
       actions: [
+        // Biometric Security toggle / status button
+        IconButton(
+          tooltip: 'Biometric Security',
+          icon: const Icon(
+            Icons.fingerprint_rounded,
+            size: 22,
+            color: AppTheme.secondaryText,
+          ),
+          onPressed: _showBiometricSettingsDialog,
+        ),
         // Multi-select toggle button
         if (_credentials.isNotEmpty)
           IconButton(
