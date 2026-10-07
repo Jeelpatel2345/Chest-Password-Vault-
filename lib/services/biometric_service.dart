@@ -40,18 +40,30 @@ class BiometricService {
     }
   }
 
+  bool _isAuthenticating = false;
+
+  /// Returns whether a biometric authentication challenge is currently active.
+  bool get isAuthenticating => _isAuthenticating;
+
   /// Prompts the device's native biometric scanner (fingerprint / face ID)
   /// with device PIN/pattern fallback.
   Future<bool> authenticate({
     String reason = 'Scan your fingerprint or face to unlock Chest',
   }) async {
     try {
-      return await _localAuth.authenticate(
+      _isAuthenticating = true;
+      final result = await _localAuth.authenticate(
         localizedReason: reason,
         biometricOnly: false,
         persistAcrossBackgrounding: true,
       );
+      _isAuthenticating = false;
+      return result;
     } on PlatformException {
+      _isAuthenticating = false;
+      return false;
+    } catch (_) {
+      _isAuthenticating = false;
       return false;
     }
   }

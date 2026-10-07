@@ -282,11 +282,61 @@ void main() {
     });
 
     testWidgets(
-      'Prompts biometric setup on first launch and allows normal open',
+      'If user rejects biometrics on startup, never prompts again and directly opens every time',
       (tester) async {
-        SharedPreferences.setMockInitialValues({
+        final mockStorage = <String, Object>{
           'chest_biometrics_prompted_v1': false,
           'chest_biometrics_enabled_v1': false,
+        };
+        SharedPreferences.setMockInitialValues(mockStorage);
+
+        final storageService = LocalStorageService();
+        final biometricService = BiometricService();
+
+        // Launch #1 (first time)
+        await tester.pumpWidget(
+          PasswordVaultApp(
+            storageService: storageService,
+            biometricService: biometricService,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Verify the initial startup prompt is displayed
+        expect(find.text('Add Biometrics?'), findsOneWidget);
+        expect(find.text('Cancel / Normal Open'), findsOneWidget);
+
+        // User REJECTS by tapping Cancel / Normal Open
+        await tester.tap(find.text('Cancel / Normal Open'));
+        await tester.pumpAndSettle();
+
+        // Prompt is dismissed, user is directly in Chest
+        expect(find.text('Add Biometrics?'), findsNothing);
+        expect(find.text('Chest'), findsOneWidget);
+
+        // Now simulate Launch #2 (subsequent app start)
+        await tester.pumpWidget(
+          PasswordVaultApp(
+            storageService: storageService,
+            biometricService: biometricService,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Crucial verification: The prompt does NOT appear! Chest opens directly!
+        expect(find.text('Add Biometrics?'), findsNothing);
+        expect(find.text('Chest Locked'), findsNothing);
+        expect(find.text('Chest'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'If user enabled biometrics, app asks for fingerprint on entry with LockScreen',
+      (tester) async {
+        // Biometrics is enabled
+        SharedPreferences.setMockInitialValues({
+          'chest_biometrics_prompted_v1': true,
+          'chest_biometrics_enabled_v1': true,
         });
 
         final storageService = LocalStorageService();
@@ -298,20 +348,13 @@ void main() {
             biometricService: biometricService,
           ),
         );
-        await tester.pumpAndSettle();
+        await tester.pump(const Duration(milliseconds: 200));
 
-        // Verify the startup popup dialog appears
-        expect(find.text('Add Biometrics?'), findsOneWidget);
-        expect(find.text('Cancel / Normal Open'), findsOneWidget);
-        expect(find.text('Add Biometrics'), findsOneWidget);
-
-        // Tap Cancel / Normal Open
-        await tester.tap(find.text('Cancel / Normal Open'));
-        await tester.pumpAndSettle();
-
-        // Dialog is dismissed and Chest opens directly
-        expect(find.text('Add Biometrics?'), findsNothing);
-        expect(find.text('Chest'), findsOneWidget);
+        // Verifies the user is presented with the Lock Screen and fingerprint prompt
+        expect(find.text('Chest Locked'), findsOneWidget);
+        expect(find.byIcon(Icons.fingerprint_rounded), findsWidgets);
+        expect(find.text('Unlock with Biometrics'), findsOneWidget);
+        expect(find.text('Chest'), findsNothing);
       },
     );
 

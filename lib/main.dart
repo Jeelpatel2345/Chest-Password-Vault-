@@ -34,14 +34,41 @@ class PasswordVaultApp extends StatefulWidget {
   State<PasswordVaultApp> createState() => _PasswordVaultAppState();
 }
 
-class _PasswordVaultAppState extends State<PasswordVaultApp> {
+class _PasswordVaultAppState extends State<PasswordVaultApp>
+    with WidgetsBindingObserver {
   bool _isLocked = false;
   bool _isCheckingLock = true;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _checkInitialLock();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused) {
+      _onAppPaused();
+    }
+  }
+
+  Future<void> _onAppPaused() async {
+    // Re-lock the app when sent to background so entering again asks for fingerprint
+    if (!widget.biometricService.isAuthenticating) {
+      final enabled = await widget.biometricService.isBiometricsEnabled();
+      if (enabled && mounted) {
+        setState(() {
+          _isLocked = true;
+        });
+      }
+    }
   }
 
   Future<void> _checkInitialLock() async {
